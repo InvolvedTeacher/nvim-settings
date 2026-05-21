@@ -732,6 +732,18 @@ do
         },
       },
     },
+
+    roslyn = {
+      settings = {
+        ['csharp|completion'] = {
+          dotnet_show_completion_items_from_unimported_namespaces = true,
+          dotnet_provide_regex_completions = true,
+        },
+        ['csharp|background_analysis'] = {
+          dotnet_compiler_diagnostics_scope = 'openFiles',
+        },
+      },
+    },
   }
 
   vim.pack.add {
@@ -739,10 +751,16 @@ do
     gh 'mason-org/mason.nvim',
     gh 'mason-org/mason-lspconfig.nvim',
     gh 'WhoIsSethDaniel/mason-tool-installer.nvim',
+    gh 'seblyng/roslyn.nvim',
   }
 
   -- Automatically install LSPs and related tools to stdpath for Neovim
-  require('mason').setup {}
+  require('mason').setup {
+    registries = {
+      'github:mason-org/mason-registry',
+      'github:Crashdummyy/mason-registry',
+    },
+  }
 
   -- Ensure the servers and tools above are installed
   --
@@ -754,13 +772,27 @@ do
   local ensure_installed = vim.tbl_keys(servers or {})
   vim.list_extend(ensure_installed, {
     -- You can add other tools here that you want Mason to install
+    'csharpier',
   })
 
   require('mason-tool-installer').setup { ensure_installed = ensure_installed }
 
   for name, server in pairs(servers) do
-    vim.lsp.config(name, server)
-    vim.lsp.enable(name)
+    if name == 'roslyn' then
+      -- Intercept Roslyn setup to prevent standard global activation,
+      -- letting roslyn.nvim configure project tracking dynamically.
+      require('roslyn').setup {
+        args = {
+          '--logLevel=Information',
+          '--extensionLogDirectory=' .. vim.fs.dirname(vim.lsp.get_log_path()),
+          '--stdio',
+        },
+        config = server,
+      }
+    else
+      vim.lsp.config(name, server)
+      vim.lsp.enable(name)
+    end
   end
 end
 
@@ -778,9 +810,10 @@ do
       local enabled_filetypes = {
         -- lua = true,
         -- python = true,
+        cs = true,
       }
       if enabled_filetypes[vim.bo[bufnr].filetype] then
-        return { timeout_ms = 500 }
+        return { timeout_ms = 1000 }
       else
         return nil
       end
@@ -796,6 +829,7 @@ do
       --
       -- You can use 'stop_after_first' to run the first available formatter from the list
       -- javascript = { "prettierd", "prettier", stop_after_first = true },
+      cs = { 'csharpier' },
     },
   }
 
